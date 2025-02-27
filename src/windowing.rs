@@ -29,7 +29,7 @@ fn load_icon() -> Option<Icon>{
     };
     
     match Icon::from_rgba(icon_rgba, icon_width, icon_height) {
-        Ok(icon) => {println!("wut");Some(icon)}
+        Ok(icon) => {Some(icon)}
         Err(_) => None
     }
 }
