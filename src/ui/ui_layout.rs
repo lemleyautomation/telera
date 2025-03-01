@@ -35,17 +35,45 @@ impl CustomStyles for Declaration{
     }
 }
 
+struct SubPage{name: String, p_type:Page}
+struct PageInfo{
+    pub name: String,
+    pub p_type: Page,
+    pub sub_pages: Vec<SubPage>
+}
+
+#[derive(Default, PartialEq, Clone, Copy)]
+enum Page {
+    Printing,
+    CurrentDate,
+    FutureDate,
+    ShoppingList,
+    CustomPrint,
+    Inventory,
+    ILookup,
+    IAdd,
+    IEdit,
+    IDelete,
+    Web,
+    AI,
+    Search,
+    #[default]
+    Weather
+}
+
 fn render_sidebar_button(clay: &Clay, text: &str, click_event:bool, selected_page: bool) -> bool {
     let mut clicked = false;
 
-    clay.with_styling(&mut Declaration::new() 
-            .layout()
-                .padding(Padding::new(16,16,8,8))
-                .end()
-            .corner_radius()
-                .all(5.0)
-                .end()
-        ,|styling| {
+    clay.with_styling(
+        || {
+            let mut styling = Declaration::new() 
+                    .layout()
+                        .padding(Padding::new(16,16,8,8))
+                        .end()
+                    .corner_radius()
+                        .all(5.0)
+                        .end().to_owned();
+
             if clay.hovered() {
                 styling.background_color(LAVE);
             }
@@ -55,6 +83,8 @@ fn render_sidebar_button(clay: &Clay, text: &str, click_event:bool, selected_pag
                     .color(PURP)
                     .end();
             }
+
+            styling
         },
         || {
             if clay.hovered() {
@@ -90,11 +120,68 @@ pub struct ClayState{
     pub scroll_delta: (f32,f32),
     pub size:(f32,f32),
 
-    pub selected_page: u8
+    pub selected_page: Page,
+    pub pages: Vec<PageInfo>
 }
 
 pub fn initialize_user_data(user_data: &mut ClayState){
-    
+    user_data.pages.push(PageInfo{
+        name: "Printing".to_string(),
+        p_type: Page::Printing,
+        sub_pages: {
+            let mut sub_pages = Vec::<SubPage>::new();
+            sub_pages.push(SubPage{
+                name:"Current Date".to_string(), p_type: Page::CurrentDate
+            });
+            sub_pages.push(SubPage{
+                name:"Future Date".to_string(), p_type: Page::FutureDate
+            });
+            sub_pages.push(SubPage{
+                name:"Shopping List".to_string(), p_type: Page::ShoppingList
+            });
+            sub_pages.push(SubPage{
+                name: "Custom".to_string(), p_type: Page::CustomPrint
+            });
+            sub_pages
+        }
+    });
+    user_data.pages.push(PageInfo{
+        name: "Inventory".to_string(),
+        p_type: Page::Inventory,
+        sub_pages: {
+            let mut sub_pages = Vec::<SubPage>::new();
+            sub_pages.push(SubPage{
+                name: "Lookup".to_string(), p_type: Page::ILookup
+            });
+            sub_pages.push(SubPage{
+                name: "Add".to_string(), p_type: Page::IAdd
+            });
+            sub_pages.push(SubPage{
+                name: "Edit".to_string(), p_type: Page::IEdit
+            });
+            sub_pages.push(SubPage{
+                name: "Delete".to_string(), p_type: Page::IDelete
+            });
+            sub_pages
+        }
+    });
+    user_data.pages.push(PageInfo{
+        name: "Web".to_string(),
+        p_type: Page::Web,
+        sub_pages: {
+            let mut sub_pages = Vec::<SubPage>::new();
+            sub_pages.push(SubPage{
+                name: "AI".to_string(), p_type: Page::AI
+            });
+            sub_pages.push(SubPage{
+                name: "Search".to_string(), p_type: Page::Search
+            });
+            sub_pages.push(SubPage{
+                name: "Weather".to_string(), p_type: Page::Weather
+            });
+            sub_pages
+        }
+    });
 }
 
 pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_delta: f32) -> impl Iterator<Item = RenderCommand<'a>>{
@@ -145,15 +232,42 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                     );
 
                     let pages = [
-                        "Current Date", "Future Date", "Inventory lookup",
+                        "Printing", "Inventory lookup",
                         "Add Items", "Edit Item", "Remove Items",
                         "Web Lookup", "Chat AI", "Weather"
                     ];
 
-                    for i in 0..pages.len() {
-                        if render_sidebar_button(clay, pages[i], user_data.mouse_down_rising_edge, user_data.selected_page == i as u8) {
-                            user_data.selected_page = i as u8;
+                    // for i in 0..pages.len() {
+                    //     if render_sidebar_button(clay, pages[i], user_data.mouse_down_rising_edge, user_data.selected_page == i as u8) {
+                    //         user_data.selected_page = i as u8;
+                    //     }
+                    // }
+
+                    for page_info in user_data.pages.iter() {
+                        let mut is_selected = page_info.p_type == user_data.selected_page;
+                        let mut new_selection = render_sidebar_button(clay, &page_info.name, user_data.mouse_down_rising_edge, is_selected);
+                        if new_selection {
+                            user_data.selected_page = page_info.p_type;
                         }
+
+                        clay.with(&Declaration::new()
+                            .layout()
+                                .direction(TopToBottom)
+                                .padding(Padding::horizontal(10))
+                                .end()
+                            .border()
+                                .left(5)
+                                .color(LAVE)
+                                .end()
+                        , |_|{
+                            for sub_page_info in page_info.sub_pages.iter() {
+                                is_selected = sub_page_info.p_type == user_data.selected_page;
+                                new_selection = render_sidebar_button(clay, &sub_page_info.name, user_data.mouse_down_rising_edge, is_selected);
+                                if new_selection {
+                                    user_data.selected_page = sub_page_info.p_type;
+                                }
+                            }
+                        });
                     }
                 }
             );
@@ -169,11 +283,10 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                     .all_directions(3)
                     .color(DARK)
                     .end()
-                //.background_color(WHITE)
                 , |_| {
 
                     match user_data.selected_page {
-                        0 => {
+                        Page::AI => {
                             clay.with(&Declaration::new()
                                     .id(clay.id("current-date-titlebar"))
                                     .layout()
