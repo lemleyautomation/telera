@@ -1,18 +1,25 @@
-use std::time::Duration;
+use std::rc;
+use std::thread::sleep;
+use std::time::{Duration, Instant};
 
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{MouseScrollDelta, WindowEvent};
+use winit::event::{ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
-use winit::keyboard::Key;
+use winit::keyboard::{Key, KeyCode, ModifiersKeyState, PhysicalKey, SmolStr};
 use winit::platform::windows::WindowAttributesExtWindows;
 use winit::window::{Window, WindowId, Icon};
 
 use crate::graphics::graphics_context::GraphicsContext;
 
+
 #[derive(Default)]
 pub struct App<'a> {
     ctx: Option<GraphicsContext<'a>>,
+    wait_time: Option<Instant>,
+
+    pub lcon: bool,
+    pub rcon: bool,
 }
 
 fn load_icon() -> Option<Icon>{
@@ -51,6 +58,7 @@ impl<'a> ApplicationHandler for App<'a> {
         state.ui_state.borrow_mut().dpi_scale = dpi_scale;
 
         self.ctx = Some(state);
+        self.wait_time = Some(Instant::now());
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
@@ -67,13 +75,13 @@ impl<'a> ApplicationHandler for App<'a> {
             WindowEvent::RedrawRequested => {
                 self.ctx.as_mut().unwrap().render().unwrap();
                 self.ctx.as_mut().unwrap().clay_user_data.mouse_down_rising_edge = false;
-                //std::thread::sleep(Duration::from_millis(16));
-                self.ctx.as_ref().unwrap().window.request_redraw();
             }
+            
             WindowEvent::MouseInput { device_id:_, state, button } => {
                 match button {
                     winit::event::MouseButton::Left => {
                         self.ctx.as_mut().unwrap().clay_user_data.mouse_down_rising_edge = state.is_pressed();
+                        self.ctx.as_ref().unwrap().window.request_redraw();
                     }
                     _ => {}
                 }
@@ -86,16 +94,47 @@ impl<'a> ApplicationHandler for App<'a> {
             }
             WindowEvent::CursorMoved { device_id:_, position } => {
                 self.ctx.as_mut().unwrap().clay_user_data.mouse_position = position.into();
+
+                self.ctx.as_ref().unwrap().window.request_redraw();
             }
             WindowEvent::KeyboardInput { device_id:_, event, is_synthetic:_ } => {
+                match event.physical_key {
+                    PhysicalKey::Code(c)  => {
+                        match c {
+                            KeyCode::ControlLeft => {
+                                match event.state {
+                                    ElementState::Pressed => self.lcon = true,
+                                    ElementState::Released => self.lcon = false
+                                }
+                            }
+                            KeyCode::ControlRight => {
+                                match event.state {
+                                    ElementState::Pressed => self.rcon = true,
+                                    ElementState::Released => self.rcon = false
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
                 match event.logical_key {
                     Key::Character(char) => {
+                        if (self.lcon || self.rcon) && char.contains("+") {
+                            self.ctx.as_mut().unwrap().clay_user_data.user_scale += 1;    
+                        }
+                        if (self.lcon || self.rcon) && char.contains("-") &&  self.ctx.as_mut().unwrap().clay_user_data.user_scale > 0 {
+                            self.ctx.as_mut().unwrap().clay_user_data.user_scale -= 1;    
+                        }
                         self.ctx.as_mut().unwrap().ui_state.borrow_mut().new_char(char);
                     }
                     _ => {}
                 }
+                self.ctx.as_ref().unwrap().window.request_redraw();
             }
             _ => (),
         }
     }
+
+    
 }

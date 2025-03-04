@@ -61,7 +61,7 @@ enum Page {
     Weather
 }
 
-fn render_sidebar_button(clay: &Clay, text: &str, click_event:bool, selected_page: bool) -> bool {
+fn render_sidebar_button(clay: &Clay, text: &str, font_size: u16, click_event:bool, selected_page: bool) -> bool {
     let mut clicked = false;
 
     clay.with_styling(
@@ -91,7 +91,8 @@ fn render_sidebar_button(clay: &Clay, text: &str, click_event:bool, selected_pag
                 clay.text(
                     text, 
                     TextConfig::new()
-                        .font_size(16)
+                        .font_size(font_size)
+                        .line_height(font_size+2)
                         .color(DARK)
                         .end()
                 );
@@ -101,7 +102,8 @@ fn render_sidebar_button(clay: &Clay, text: &str, click_event:bool, selected_pag
                 clay.text(
                     text, 
                     TextConfig::new()
-                        .font_size(16)
+                        .font_size(font_size)
+                        .line_height(font_size+2)
                         .color(PINK)
                         .end()
                 );
@@ -121,10 +123,16 @@ pub struct ClayState{
     pub size:(f32,f32),
 
     pub selected_page: Page,
-    pub pages: Vec<PageInfo>
+    pub pages: Vec<PageInfo>,
+    pub user_scale: u16,
+    pub control_key: bool,
+    pub plus_key: bool,
+    pub minus_key: bool
 }
 
 pub fn initialize_user_data(user_data: &mut ClayState){
+    user_data.user_scale = 0;
+
     user_data.pages.push(PageInfo{
         name: "Printing".to_string(),
         p_type: Page::Printing,
@@ -207,8 +215,10 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                     //.width(percent!(0.2))
                     //.height(grow!())
                     .direction(TopToBottom)
-                    .padding(Padding::all(20))
-                    .child_gap(20)
+                    .padding(
+                        Padding::new(10, 0, 0, 20)
+                    )
+                    .child_gap(15)
                     .end()
                 .background_color(DARK)
                 .corner_radius()
@@ -225,27 +235,15 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                         , |_| {
                             clay.text("Pages:", TextConfig::new()
                                 .color(DARK)
-                                .font_size(18)
+                                .font_size(18+user_data.user_scale)
                                 .end()
                             );
                         }
                     );
 
-                    let pages = [
-                        "Printing", "Inventory lookup",
-                        "Add Items", "Edit Item", "Remove Items",
-                        "Web Lookup", "Chat AI", "Weather"
-                    ];
-
-                    // for i in 0..pages.len() {
-                    //     if render_sidebar_button(clay, pages[i], user_data.mouse_down_rising_edge, user_data.selected_page == i as u8) {
-                    //         user_data.selected_page = i as u8;
-                    //     }
-                    // }
-
                     for page_info in user_data.pages.iter() {
                         let mut is_selected = page_info.p_type == user_data.selected_page;
-                        let mut new_selection = render_sidebar_button(clay, &page_info.name, user_data.mouse_down_rising_edge, is_selected);
+                        let mut new_selection = render_sidebar_button(clay, &page_info.name, 18+user_data.user_scale, user_data.mouse_down_rising_edge, is_selected);
                         if new_selection {
                             user_data.selected_page = page_info.p_type;
                         }
@@ -254,15 +252,16 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                             .layout()
                                 .direction(TopToBottom)
                                 .padding(Padding::horizontal(10))
+                                .child_gap(5)
                                 .end()
                             .border()
-                                .left(5)
+                                .left(10)
                                 .color(LAVE)
                                 .end()
                         , |_|{
                             for sub_page_info in page_info.sub_pages.iter() {
                                 is_selected = sub_page_info.p_type == user_data.selected_page;
-                                new_selection = render_sidebar_button(clay, &sub_page_info.name, user_data.mouse_down_rising_edge, is_selected);
+                                new_selection = render_sidebar_button(clay, &sub_page_info.name,18+user_data.user_scale, user_data.mouse_down_rising_edge, is_selected);
                                 if new_selection {
                                     user_data.selected_page = sub_page_info.p_type;
                                 }
@@ -307,7 +306,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                                     );
 
                                     clay.text("Current Date", TextConfig::new()
-                                        .font_size(24)
+                                        .font_size(24+user_data.user_scale)
                                         .color(DARK)
                                         .end()
                                     );
