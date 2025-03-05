@@ -1,35 +1,16 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::time::Instant;
-
+use wgpu::{Device, Queue, RenderPass, SurfaceConfiguration};
 use winit::window::Window;
-use clay_layout::Clay;
-
-// use crate::graphics::pipeline_builder::PipelineBuilder;
-// use crate::graphics::mesh_builder::{self, as_u8_slice, Vertex};
-
-use crate::ui::ui_renderer::UIState;
-use crate::ui::ui_layout::{self, create_layout, ClayState};
-
-use super::depth_texture::DepthTexture;
 
 pub struct GraphicsContext<'a>{
     #[allow(dead_code)]
     instance: wgpu::Instance,
     surface: wgpu::Surface<'a>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
     depth_texture: DepthTexture,
     size: (i32,i32),
     pub window: Window,
-    // render_pipeline: wgpu::RenderPipeline,
-    // triangle_mesh: wgpu::Buffer,
-    // quad_mesh: wgpu::Buffer,
-
-    pub ui_state: Rc<RefCell<UIState>>,
-    pub clay: Clay<'a>,
-    pub clay_user_data: ui_layout::ClayState,
 }
 
 impl<'a> GraphicsContext<'a> {
@@ -79,24 +60,6 @@ impl<'a> GraphicsContext<'a> {
 
         let depth_texture = DepthTexture::new(&device, &config);
 
-        
-
-        // let triangle_mesh = mesh_builder::make_triangle(&device);
-        // let quad_mesh = mesh_builder::make_quad(&device);
-
-        // let mut pipeline_builder = PipelineBuilder::new("shader.wgsl", config.format);
-        // pipeline_builder.add_buffer_layout(mesh_builder::Vertex::get_layout());
-        // let render_pipeline = pipeline_builder.build_pipeline(&device);
-
-        let ui_state = Rc::<RefCell<UIState>>::new(RefCell::new(UIState::new(&device, &queue,config.format, window.inner_size())));
-
-        let mut clay = Clay::new((size.0 as f32, size.1 as f32).into());
-        clay.enable_debug_mode(false);
-        
-        clay.set_measure_text_function_user_data(ui_state.clone(), ui_layout::measure_text);
-        let mut clay_user_data = ClayState::default();
-        ui_layout::initialize_user_data(&mut clay_user_data);
-
         Self {
             instance,
             window,
@@ -106,17 +69,10 @@ impl<'a> GraphicsContext<'a> {
             config,
             size,
             depth_texture,
-            // render_pipeline,
-            // triangle_mesh,
-            // quad_mesh, 
-            
-            ui_state,
-            clay,
-            clay_user_data,
         }
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render<F: FnOnce(&mut RenderPass, &Device, &Queue, &SurfaceConfiguration)>(&mut self, ui:F) -> Result<(), wgpu::SurfaceError> {
         let drawable = self.surface.get_current_texture()?;
 
         let mut command_encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -153,14 +109,7 @@ impl<'a> GraphicsContext<'a> {
                 occlusion_query_set: None
             });
 
-            //let timestamp = Instant::now();
-            let render_commands = create_layout(
-                &mut self.clay, 
-                &mut self.clay_user_data,
-                0.016,
-            );
-            self.ui_state.borrow_mut().render_clay(render_commands, &mut render_pass, &self.device, &self.queue, &self.config);
-            //println!("{:?}", timestamp.elapsed());
+            ui(&mut render_pass, &self.device, &self.queue, &self.config);
         }
 
         self.queue.submit(std::iter::once(command_encoder.finish()));
@@ -170,10 +119,6 @@ impl<'a> GraphicsContext<'a> {
 
     pub fn resize(&mut self) {
         let new_size = (self.window.inner_size().width as i32, self.window.inner_size().height as i32);
-
-        self.ui_state.borrow_mut().resize(new_size);
-
-        self.clay_user_data.size = (new_size.0 as f32, new_size.1 as f32);
 
         if new_size.0 > 0 && new_size.1 > 0 {
             self.size = new_size;
@@ -192,5 +137,58 @@ impl<'a> GraphicsContext<'a> {
         self.surface = unsafe {
             self.instance.create_surface_unsafe(target)
         }.unwrap();
+    }
+}
+
+
+pub struct DepthTexture{
+    #[allow(dead_code)]
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    #[allow(dead_code)]
+    pub sampler: wgpu::Sampler
+}
+
+impl DepthTexture {
+    pub fn new(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> Self {
+        let texture = device.create_texture(
+            &wgpu::TextureDescriptor {
+                size: wgpu::Extent3d { // 2.
+                    width: config.width.max(1),
+                    height: config.height.max(1),
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Depth32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                label: Some("depth_texture"),
+                view_formats: &[],
+            }
+        );
+
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let sampler = device.create_sampler(
+            &wgpu::SamplerDescriptor { // 4.
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::FilterMode::Nearest,
+                compare: Some(wgpu::CompareFunction::LessEqual), // 5.
+                lod_min_clamp: 0.0,
+                lod_max_clamp: 100.0,
+                ..Default::default()
+            }
+        );
+
+        Self {
+            texture,
+            view,
+            sampler
+        }
     }
 }

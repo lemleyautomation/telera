@@ -1,12 +1,10 @@
 use clay_layout::{
-        elements::FloatingAttachToElement, fixed, grow, layout::{
-        Alignment, 
+        grow, layout::{
         LayoutDirection::TopToBottom, 
         Padding,
-    }, math::Dimensions, percent, render_commands::RenderCommand, text::TextConfig, Clay, Color, Declaration
+    }, 
+    math::Dimensions, render_commands::RenderCommand, text::TextConfig, Clay, ClayLayoutScope, Color, Declaration
 };
-
-const WHITE: Color = Color::rgb(255.0, 255.0, 255.0);
 
 const BASE: Color = Color::rgb(252.0, 245.0, 199.0);
 const DARK: Color = Color::rgb(36.0, 62.0, 54.0);
@@ -14,36 +12,40 @@ const PINK: Color = Color::rgb(239.0, 185.0, 203.0);
 const LAVE: Color = Color::rgb(230.0, 173.0, 236.0);
 const PURP: Color = Color::rgb(194.0, 135.0, 232.0);
 
-trait CustomStyles {
-    fn layout_expand(&mut self) -> Self;
-    fn content_background_config(&mut self) -> Self;
-}
+// trait CustomStyles<ImageElementData, CustomElementData> {
+//     fn layout_expand(&mut self) -> &mut Self;
+//     fn content_background_config(&mut self) -> &mut Self;
+// }
 
-impl CustomStyles for Declaration{
-    fn layout_expand(&mut self) -> Self {
-        *self.layout()
-            .width(grow!())
-            .height(grow!())
-            .end()
-    }
+// impl<ImageElementData, CustomElementData> CustomStyles<ImageElementData, CustomElementData> for Declaration<'_, ImageElementData, CustomElementData>{
+//     fn layout_expand(&mut self) -> &mut Self {
+//         self.layout()
+//             .width(grow!())
+//             .height(grow!())
+//             .end();
 
-    fn content_background_config(&mut self) -> Self {
-        *self.background_color(Color::rgb(90.0, 90.0, 90.0))
-            .corner_radius()
-                .all(8.0)
-                .end()
-    }
-}
+//         self
+//     }
 
-struct SubPage{name: String, p_type:Page}
-struct PageInfo{
+//     fn content_background_config(&mut self) -> &mut Self {
+//         self.background_color(Color::rgb(90.0, 90.0, 90.0))
+//             .corner_radius()
+//                 .all(8.0)
+//                 .end();
+
+//         self
+//     }
+// }
+
+pub struct SubPage{name: String, p_type:Page}
+pub struct PageInfo{
     pub name: String,
     pub p_type: Page,
     pub sub_pages: Vec<SubPage>
 }
 
 #[derive(Default, PartialEq, Clone, Copy)]
-enum Page {
+pub enum Page {
     Printing,
     CurrentDate,
     FutureDate,
@@ -61,16 +63,16 @@ enum Page {
     Weather
 }
 
-fn render_sidebar_button(clay: &Clay, text: &str, font_size: u16, click_event:bool, selected_page: bool) -> bool {
+fn render_sidebar_button<'a>(clay: &mut ClayLayoutScope<'a, 'a, (), ()>, text: &str, font_size: u16, click_event:bool, selected_page: bool) -> bool {
     let mut clicked = false;
 
     clay.with_styling(
-        || {
-            let mut styling = Declaration::new() 
-                    .layout()
-                        .padding(Padding::new(16,16,8,8))
-                        .end()
-                    .corner_radius()
+        |clay| {
+            let mut styling: Declaration<'_, (), ()> = Declaration::new()
+                .layout()
+                    .padding(Padding::new(16,16,8,8))
+                    .end()
+                .corner_radius()
                         .all(5.0)
                         .end().to_owned();
 
@@ -86,7 +88,7 @@ fn render_sidebar_button(clay: &Clay, text: &str, font_size: u16, click_event:bo
 
             styling
         },
-        || {
+        |clay| {
             if clay.hovered() {
                 clay.text(
                     text, 
@@ -192,12 +194,12 @@ pub fn initialize_user_data(user_data: &mut ClayState){
     });
 }
 
-pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_delta: f32) -> impl Iterator<Item = RenderCommand<'a>>{
+pub fn create_layout<'render>(clay: &'render mut Clay, user_data: &mut ClayState, time_delta: f32) -> impl Iterator<Item = RenderCommand<'render, (), ()>>{
     clay.layout_dimensions(user_data.size.into());
     clay.pointer_state(user_data.mouse_position.into(), false);
     clay.update_scroll_containers(false, user_data.scroll_delta.into(), time_delta);
 
-    clay.begin();
+    let mut clay = clay.begin::<(), ()>();
 
     clay.with(&Declaration::new()
         .id(clay.id("outer_container"))
@@ -208,7 +210,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
             .child_gap(8)
             .end()
         .background_color(BASE)
-        , |_|{
+        , |clay|{
             clay.with(&Declaration::new()
                 .id(clay.id("sidebar"))
                 .layout()
@@ -224,7 +226,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                 .corner_radius()
                     .all(25.0)
                     .end()
-                , |_| {
+                , |clay| {
                     clay.with(&Declaration::new()
                         .layout()
                             .width(grow!())
@@ -232,7 +234,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                         .border()
                             .bottom(5)
                             .end()
-                        , |_| {
+                        , |clay| {
                             clay.text("Pages:", TextConfig::new()
                                 .color(DARK)
                                 .font_size(18+user_data.user_scale)
@@ -258,7 +260,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                                 .left(10)
                                 .color(LAVE)
                                 .end()
-                        , |_|{
+                        , |clay|{
                             for sub_page_info in page_info.sub_pages.iter() {
                                 is_selected = sub_page_info.p_type == user_data.selected_page;
                                 new_selection = render_sidebar_button(clay, &sub_page_info.name,18+user_data.user_scale, user_data.mouse_down_rising_edge, is_selected);
@@ -282,7 +284,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                     .all_directions(3)
                     .color(DARK)
                     .end()
-                , |_| {
+                , |clay| {
 
                     match user_data.selected_page {
                         Page::AI => {
@@ -295,7 +297,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
                                         .bottom(5)
                                         .color(DARK)
                                         .end()
-                                , |_| {
+                                , |clay| {
                                     clay.with(&Declaration::new()
                                         .layout()
                                             .width(grow!())
@@ -334,7 +336,7 @@ pub fn create_layout<'a>(clay: &'a mut Clay, user_data: &mut ClayState, time_del
 }
 
 use std::{cell::RefCell, rc::Rc};
-use crate::ui::ui_renderer::UIState;
+use crate::ui_renderer::UIState;
 pub fn measure_text(text: &str, config: &TextConfig, ui: &mut Rc<RefCell<UIState>>) -> Dimensions {
     ui.borrow_mut().measure_text(text, config.font_size as f32, config.line_height as f32)
 }

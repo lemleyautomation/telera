@@ -1,19 +1,15 @@
-use clay_layout::render_commands::RenderCommand;
-use clay_layout::math::Dimensions;
-
 use glyphon::{
     Attrs, Buffer, Cache, cosmic_text, Color, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
 use wgpu::util::DeviceExt;
 use wgpu::MultisampleState;
-use winit::{dpi::PhysicalSize, keyboard::SmolStr};
+use winit::dpi::PhysicalSize;
 use core::f32;
 use std::ops::{Add, Mul, Sub};
 
-use crate::ui::ui_pipeline::UIPipeline;
-
-pub const PI: f32 = 3.141592653589793238462643;
+use clay_layout::render_commands::RenderCommand;
+use clay_layout::math::Dimensions;
 
 pub struct TextLine {
     line: glyphon::Buffer,
@@ -58,7 +54,7 @@ impl UIPosition {
     pub fn rotate(&mut self, mut degrees: f32){
         degrees = -degrees;
 
-        degrees = degrees * (PI/180.0);
+        degrees = degrees * (std::f32::consts::PI/180.0);
 
         let (sn, cs) = degrees.sin_cos();
 
@@ -198,7 +194,7 @@ pub struct UIState{
 }
 
 impl UIState{
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue,  pixel_format:wgpu::TextureFormat, size:PhysicalSize<u32>) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue,  pixel_format:wgpu::TextureFormat, size:PhysicalSize<u32>, dpi_scale: f32) -> Self {
         let (buffer, vertices) = make_ui_buffer(device, "ui triangle buffer", 10000, (size.width as i32, size.height as i32));
 
         let mut ui_pipeline_builder = UIPipeline::new(pixel_format);
@@ -235,7 +231,7 @@ impl UIState{
             text_renderer,
             measurement_buffer,
             lines: Vec::<TextLine>::new(),
-            dpi_scale: 1.0
+            dpi_scale,
         }
     }
 
@@ -253,8 +249,6 @@ impl UIState{
         render_pass.draw(0..self.number_of_vertices as u32, 0..1);
 
         self.number_of_vertices = 0;
-
-        //self.render_text(&device, &queue, render_pass, &surface_config);
     }
 
     fn render_text(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, render_pass:&mut wgpu::RenderPass, surface_config: &wgpu::SurfaceConfiguration) {
@@ -333,10 +327,6 @@ impl UIState{
         (self.measurement_buffer.layout_runs().next().unwrap().line_w, self.measurement_buffer.metrics().line_height).into()
     }
 
-    pub fn new_char(&mut self, char: SmolStr){
-        let _c = char.as_str();
-    }
-
     pub fn resize(&mut self, size:(i32,i32)){
         for vertex in self.vertices.as_mut_slice() {
             vertex.size.width = size.0 as f32;
@@ -404,7 +394,7 @@ impl UIState{
         let arc_length = (degree_end-degree_begin).abs();
         let number_of_segments = 10.0;
         let arc_segment_length = arc_length / number_of_segments; // 10 = number of segments
-        let arc_segment_distance = (2.0*PI*radius) * (arc_segment_length/360.0);
+        let arc_segment_distance = (2.0*std::f32::consts::PI*radius) * (arc_segment_length/360.0);
     
         let mut arc_point = UIPosition {x:0.0, y:0.0, z:origin.z };
     
@@ -528,8 +518,6 @@ impl UIState{
     pub fn text(&mut self, text: &str, font_size:f32, line_height:f32, position: UIPosition, bounds:Option<(UIPosition, UIPosition)>, color:cosmic_text::Color, draw_order:f32){
         let mut line = Buffer::new(&mut self.font_system, Metrics::new(font_size,line_height));
 
-        
-
         line.set_text(&mut self.font_system, text, Attrs::new().family(Family::SansSerif).metadata((draw_order*10000.0) as usize), Shaping::Advanced);
         
         line.shape_until_scroll(&mut self.font_system, false);
@@ -543,19 +531,16 @@ impl UIState{
         });
     }
 
-    pub fn render_clay<'b>(&mut self, commands: impl IntoIterator<Item = RenderCommand<'b>>, render_pass:&mut wgpu::RenderPass, device: &wgpu::Device, queue: &wgpu::Queue, surface_config: &wgpu::SurfaceConfiguration) {
+    pub fn render_clay<'a, ImageElementData: 'a, CustomElementData: 'a>(&mut self, render_commands: impl Iterator<Item = RenderCommand<'a, ImageElementData, CustomElementData>>, render_pass:&mut wgpu::RenderPass, device: &wgpu::Device, queue: &wgpu::Queue, surface_config: &wgpu::SurfaceConfiguration) {
+
         let mut scissor_position = UIPosition::new();
         let mut scissor_bounds = UIPosition::new();
         let mut scissor_active = false;
         let mut depth: f32 = 0.1;
 
-        for command in commands {
+        for command in render_commands {
             match command.config {
                 clay_layout::render_commands::RenderCommandConfig::Rectangle(r) => {
-                    if self.lines.len() > 0 {
-                        //self.render_text(device, queue, render_pass, surface_config);
-                    }
-
                     self.filled_rectangle(
                         UIPosition { x: command.bounding_box.x, y: command.bounding_box.y, z: depth as f32 }, 
                         UIPosition { x: command.bounding_box.width, y: command.bounding_box.height, z: depth as f32 }, 
@@ -569,10 +554,6 @@ impl UIState{
                     );
                 }
                 clay_layout::render_commands::RenderCommandConfig::Border(b) => {
-                    if self.lines.len() > 0 {
-                        //self.render_text(device, queue, render_pass, surface_config);
-                    }
-
                     self.rectangle(
                         UIPosition { x: command.bounding_box.x, y: command.bounding_box.y, z: depth as f32 }, 
                         UIPosition { x: command.bounding_box.width, y: command.bounding_box.height, z: depth as f32 },
@@ -652,4 +633,92 @@ fn make_ui_buffer(device: &wgpu::Device, label: &str, number_of_triangles: usize
     let buffer = device.create_buffer_init(&buffer_desctriptor);
     
     (buffer, vertices)
+}
+
+pub struct UIPipeline {
+    pixel_format: wgpu::TextureFormat,
+    vertex_buffer_layouts: Vec<wgpu::VertexBufferLayout<'static>>,
+}
+
+impl UIPipeline {
+    pub fn new(pixel_format: wgpu::TextureFormat) -> Self {
+        Self {
+            pixel_format,
+            vertex_buffer_layouts: Vec::new()
+        }
+    }
+
+    pub fn add_buffer_layout(&mut self, layout: wgpu::VertexBufferLayout<'static>) {
+        self.vertex_buffer_layouts.push(layout);
+    }
+
+    pub fn build_pipeline(&self, device: &wgpu::Device) -> wgpu::RenderPipeline {
+        // let mut filepath = current_dir().unwrap();
+        // filepath.push(self.shader_file.as_str());
+        // let filepath = filepath.into_os_string().into_string().unwrap();
+        
+        // let source_code = fs::read_to_string(filepath).expect("Can't read source code");
+        let source_code = include_str!("ui_shader.wgsl");
+
+        let shader_module_desc = wgpu::ShaderModuleDescriptor {
+            label: Some("UI Shader Module"),
+            source: wgpu::ShaderSource::Wgsl(source_code.into()),
+        };
+        let shader_module = device.create_shader_module(shader_module_desc);
+
+        let piplaydesc = wgpu::PipelineLayoutDescriptor{
+            label: Some("UI Render Pipeline Layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        };
+        let pipeline_layout = device.create_pipeline_layout(&piplaydesc);
+
+        let render_targets = [Some(wgpu::ColorTargetState{
+            format: self.pixel_format,
+            blend: Some(wgpu::BlendState::REPLACE),
+            write_mask: wgpu::ColorWrites::ALL,
+        })];
+
+        let render_pip_desc = wgpu::RenderPipelineDescriptor {
+            label: Some("UI Render Pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader_module,
+                entry_point: Some("vs_main"),
+                buffers: &self.vertex_buffer_layouts,
+                compilation_options: wgpu::PipelineCompilationOptions::default()
+            },
+            primitive: wgpu::PrimitiveState { 
+                topology: wgpu::PrimitiveTopology::TriangleList, 
+                strip_index_format: None, 
+                front_face: wgpu::FrontFace::Ccw, 
+                cull_mode: Some(wgpu::Face::Back), 
+                unclipped_depth: false, 
+                polygon_mode: wgpu::PolygonMode::Fill, 
+                conservative: false 
+            },
+            fragment: Some(wgpu::FragmentState { 
+                module: &shader_module, 
+                entry_point: Some("fs_main"), 
+                targets: &render_targets,
+                compilation_options: wgpu::PipelineCompilationOptions::default()
+            }),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Always, // 1.
+                stencil: wgpu::StencilState::default(), // 2.
+                bias: wgpu::DepthBiasState::default(),
+            }),
+            multisample: wgpu::MultisampleState { 
+                count: 1, 
+                mask: 1, 
+                alpha_to_coverage_enabled: false 
+            },
+            multiview: None,
+            cache: None
+        };
+
+        device.create_render_pipeline(&render_pip_desc)
+    }
 }
