@@ -14,7 +14,7 @@ use std::rc::Rc;
 use clay_layout::Clay;
 
 use graphics_context::GraphicsContext;
-use ui_renderer::UIState;
+use ui_renderer::{UIBorderThickness, UIColor, UICornerRadii, UIPosition, UIState};
 mod graphics_context;
 mod ui_renderer;
 mod ui_layout;
@@ -77,7 +77,8 @@ impl<'a> ApplicationHandler for App<'a> {
             },
             WindowEvent::Resized(size) => {
                 self.ctx.as_mut().unwrap().resize();
-                self.ui_state.as_mut().unwrap().borrow_mut().resize((size.width as i32, size.height as i32));
+                
+                self.ui_state.as_mut().unwrap().borrow_mut().resize((size.width as i32, size.height as i32), &self.ctx.as_ref().unwrap().queue);
                 self.clay_user_data.size = (size.width as f32, size.height as f32);
             }
             WindowEvent::ScaleFactorChanged { scale_factor, inner_size_writer:_ } => {
@@ -89,11 +90,18 @@ impl<'a> ApplicationHandler for App<'a> {
 
                 self.ctx.as_mut().unwrap().render(
                     |mut render_pass, device, queue, config| {
-                        ui_renderer.render_clay(render_commands, &mut render_pass, &device, &queue, &config);
+                        ui_renderer.filled_rectangle(
+                            UIPosition{ x:200.0, y:200.0, z:0.0 },
+                            UIPosition { x: 200.0, y: 200.0, z: 0.0 }, 
+                            UIColor{r:0.5,g:0.8,b:0.5}, 
+                            UICornerRadii{top_left:0.0, top_right:0.0,bottom_left:0.0, bottom_right:0.0}
+                        );
+                        ui_renderer.render(&mut render_pass, &queue);
+
+                        //ui_renderer.render_clay(render_commands, &mut render_pass, &device, &queue, &config);
                     }
                 ).unwrap();
                 self.clay_user_data.mouse_down_rising_edge = false;
-                // self.ctx.as_ref().unwrap().window.request_redraw();
             }
             WindowEvent::MouseInput { device_id:_, state, button } => {
                 match button {

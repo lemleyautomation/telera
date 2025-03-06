@@ -94,7 +94,7 @@ fn render_sidebar_button<'a>(clay: &mut ClayLayoutScope<'a, 'a, (), ()>, text: &
                     text, 
                     TextConfig::new()
                         .font_size(font_size)
-                        .line_height(font_size+2)
+                        .line_height(((font_size as f32)*1.3) as u16)
                         .color(DARK)
                         .end()
                 );
@@ -105,7 +105,7 @@ fn render_sidebar_button<'a>(clay: &mut ClayLayoutScope<'a, 'a, (), ()>, text: &
                     text, 
                     TextConfig::new()
                         .font_size(font_size)
-                        .line_height(font_size+2)
+                        .line_height(((font_size as f32)*1.3) as u16)
                         .color(PINK)
                         .end()
                 );
